@@ -390,11 +390,13 @@ type (
 		SeriesData []*[]float64        `json:"series_data"` // MxN
 	}
 
+	SeriesMetaTagM map[string]SeriesMetaTag
+
 	//easyjson:json
 	queryTableRow struct {
-		Time    int64                    `json:"time"`
-		Data    []float64                `json:"data"`
-		Tags    map[string]SeriesMetaTag `json:"tags"`
+		Time    int64          `json:"time"`
+		Data    []float64      `json:"data"`
+		Tags    SeriesMetaTagM `json:"tags"`
 		row     tsSelectRow
 		rowRepr RowMarker
 	}
@@ -407,23 +409,23 @@ type (
 	}
 
 	QuerySeriesMetaV2 struct {
-		TimeShift int64                    `json:"time_shift"`
-		Tags      map[string]SeriesMetaTag `json:"tags"`
-		MaxHosts  []string                 `json:"max_hosts"` // max_host for now
-		Name      string                   `json:"name"`
-		Color     string                   `json:"color"`
-		What      queryFn                  `json:"what"`
-		Total     int                      `json:"total"`
+		TimeShift int64          `json:"time_shift"`
+		Tags      SeriesMetaTagM `json:"tags"`
+		MaxHosts  []string       `json:"max_hosts"` // max_host for now
+		Name      string         `json:"name"`
+		Color     string         `json:"color"`
+		What      queryFn        `json:"what"`
+		Total     int            `json:"total"`
 	}
 
 	QueryPointsMeta struct {
-		TimeShift int64                    `json:"time_shift"`
-		Tags      map[string]SeriesMetaTag `json:"tags"`
-		MaxHost   string                   `json:"max_host"` // max_host for now
-		Name      string                   `json:"name"`
-		What      queryFn                  `json:"what"`
-		FromSec   int64                    `json:"from_sec"` // rounded from sec
-		ToSec     int64                    `json:"to_sec"`   // rounded to sec
+		TimeShift int64          `json:"time_shift"`
+		Tags      SeriesMetaTagM `json:"tags"`
+		MaxHost   string         `json:"max_host"` // max_host for now
+		Name      string         `json:"name"`
+		What      queryFn        `json:"what"`
+		FromSec   int64          `json:"from_sec"` // rounded from sec
+		ToSec     int64          `json:"to_sec"`   // rounded to sec
 	}
 
 	SeriesMetaTag struct {
@@ -3806,4 +3808,38 @@ func (r *seriesRequest) validate(ai accessInfo) error {
 		}
 	}
 	return nil
+}
+
+func (m SeriesMetaTagM) MarshalJSON() ([]byte, error) {
+	var res bytes.Buffer
+	if len(m) == 0 {
+		res.WriteString("{}")
+		return res.Bytes(), nil
+	}
+	s := make([]string, 0, len(m))
+	for tagID := range m {
+		s = append(s, tagID)
+	}
+	sort.Strings(s)
+	res.WriteString("{")
+	for i, tagID := range s {
+		if i != 0 {
+			res.WriteString(",")
+		}
+		// key
+		k, err := json.Marshal(tagID)
+		if err != nil {
+			return nil, err
+		}
+		res.Write(k)
+		// value
+		res.WriteString(":")
+		k, err = json.Marshal(m[tagID])
+		if err != nil {
+			return nil, err
+		}
+		res.Write(k)
+	}
+	res.WriteString("}")
+	return res.Bytes(), nil
 }
