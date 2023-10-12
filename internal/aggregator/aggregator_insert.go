@@ -443,8 +443,8 @@ func (a *Aggregator) RowDataMarshalAppendPositions(b *aggregatorBucket, rnd *ran
 				insertItem(v.Key, v.Item, 1)
 			}
 			samplingMetric.Items = samplingMetric.Items[whalesAllowed:]
+			sf *= 2 // half of space is occupied by whales now. TODO - we can be more exact here, and save lots of rnd calls
 		}
-		sf *= 2 // half of space is occupied by whales now. TODO - we can be more exact here, and save lots of rnd calls
 		for _, v := range samplingMetric.Items {
 			if rnd.Float64()*sf < 1 {
 				insertItem(v.Key, v.Item, sf)
