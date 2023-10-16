@@ -4,15 +4,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        debian_release: [jessie, stretch, buster, bullseye]
+        debian_release: [bullseye]
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 1
       - run: |
-          echo "UPSTREAM=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          TAG=${{ matrix.debian_release }}
+          UPSTREAM=$(git describe --tags --always --dirty)
+          BUILD_TIME="$(date +%FT%T%z)"
           echo "UPSTREAM=${UPSTREAM#v}" >> $GITHUB_ENV
-          echo "BUILD_TIME=$(date +%FT%T%z)" >> $GITHUB_ENV
+          echo "BUILD_TIME=$BUILD_TIME" >> $GITHUB_ENV
           echo "REACT_APP_BUILD_VERSION=$UPSTREAM-$BUILD_TIME" >> $GITHUB_ENV
           echo "BUILD_VERSION=1:$UPSTREAM-$TAG" >> $GITHUB_ENV
       - run: |
