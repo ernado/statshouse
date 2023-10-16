@@ -9,7 +9,16 @@ jobs:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 1
-      - run: ./build/makedeb.sh ${{ matrix.debian_release }}
+      - run: |
+          echo "UPSTREAM=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          echo "UPSTREAM=${UPSTREAM#v}" >> $GITHUB_ENV
+          echo "BUILD_TIME=$(date +%FT%T%z)" >> $GITHUB_ENV
+          echo "REACT_APP_BUILD_VERSION=$UPSTREAM-$BUILD_TIME" >> $GITHUB_ENV
+          echo "BUILD_VERSION=1:$UPSTREAM-$TAG" >> $GITHUB_ENV
+      - run: |
+          echo $BUILD_TIME
+          echo $REACT_APP_BUILD_VERSION
+          echo $BUILD_VERSION
       - uses: actions/upload-artifact@v3
         with:
           name: ${{ matrix.debian_release }}
