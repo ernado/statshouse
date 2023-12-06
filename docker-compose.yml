@@ -1,22 +1,171 @@
 version: "3.9"
 
 services:
-  all:
-    image: vkcom/statshouse-localrun-all
-    container_name: sh
+  demo-1:
+    image: julius/prometheus-demo-service:latest
+  demo-2:
+    image: julius/prometheus-demo-service:latest
+  demo-3:
+    image: julius/prometheus-demo-service:latest
+  metadata:
+    build:
+      context: .
+      dockerfile: build/statshouse-metadata.Dockerfile
+      args:
+        - BUILD_TRUSTED_SUBNET_GROUPS=0.0.0.0/0
     user: "root:root"
-    ports:
-      - "2442:2442"
-      - "8123:8123"
-      - "9000:9000"
-      - "10888:10888"
-      - "13336:13336"
-      - "13337:13337/udp"
-      - "13337:13337/tcp"
+    command: --statshouse-addr=agent:13337 --db-path=/var/lib/statshouse/metadata/db --binlog-prefix=/var/lib/statshouse/metadata/binlog/bl
     volumes:
       - metadata:/var/lib/statshouse/metadata
+    ports:
+      - "2442:2442"
+
+  # old clickhouse (22.11)
+  kh:
+    build:
+      context: .
+      dockerfile: build/clickhouse.Dockerfile
+    hostname: aggregator
+    volumes:
       - kh:/var/lib/clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query='SELECT 1'"]
+      interval: 200ms
+      timeout: 1s
+      retries: 1500
+
+  # fresh clickhouse
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.10
+    volumes:
+      - ./build/clickhouse.xml:/etc/clickhouse-server/config.d/monitoring.xml
+    healthcheck:
+      test: ['CMD', 'wget', '--spider', '-q', '127.0.0.1:8123/ping']
+      interval: 1s
+      timeout: 1s
+      retries: 30
+
+  aggregator:
+    build:
+      context: .
+      dockerfile: build/statshouse.Dockerfile
+      args:
+        - BUILD_TRUSTED_SUBNET_GROUPS=0.0.0.0/0
+    user: "root:root"
+    command: aggregator -u=root -g=root --cluster=test_shard_aggregator --log-level=trace --agg-addr=':13336' --kh=kh:8123 --metadata-addr=metadata:2442 --auto-create --cache-dir=/var/lib/statshouse/cache/aggregator
+    ports:
+      - "13336:13336"
+    depends_on:
+      kh:
+        condition: service_healthy
+  agent:
+    build:
+      context: .
+      dockerfile: build/statshouse.Dockerfile
+      args:
+        - BUILD_TRUSTED_SUBNET_GROUPS=0.0.0.0/0
+    user: "root:root"
+    command: agent -u=root -g=root --cluster=test_shard_aggregator --log-level=trace --agg-addr='aggregator:13336,aggregator:13336,aggregator:13336' --cache-dir=/var/lib/statshouse/cache/agent --remote-write-enabled
+    ports:
+      - "13337:13337/udp"
+      - "13337:13337/tcp"
+      - "13380:13380"
+    depends_on:
+      - aggregator
+  api:
+    build:
+      context: .
+      dockerfile: build/statshouse-api.Dockerfile
+      args:
+        - BUILD_TRUSTED_SUBNET_GROUPS=0.0.0.0/0
+    user: "root:root"
+    command: --verbose --insecure-mode --local-mode --access-log --clickhouse-v1-addrs= --clickhouse-v2-addrs=kh:9000 --listen-addr=:10888 --metadata-addr=metadata:2442 --statshouse-addr=agent:13337 --disk-cache=/var/lib/statshouse/cache/api/mapping_cache.sqlite3
+    ports:
+      - "10888:10888"
+    depends_on:
+      kh:
+        condition: service_healthy
+  prometheus:
+    image: "prom/prometheus"
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus:/prometheus
+      - ./build/scrape.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - agent
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.95.1
+    ports:
+      - "9098:8428"
+    volumes:
+      - vmdata:/storage
+    command:
+      - "--storageDataPath=/storage"
+      - "--httpListenAddr=0.0.0.0:8428"
+    restart: always
+  # Add https://github.com/metrico/qryn for compatibility testing.
+  qryn:
+    image: qxip/qryn:latest
+    ports:
+      - "3101:3100"
+    restart: on-failure
+    environment:
+      - CLICKHOUSE_SERVER=clickhouse
+    depends_on:
+      - clickhouse
+  oteldb:
+    image: ghcr.io/go-faster/oteldb:0.2.1
+    ports:
+      - "9095:9090"
+    environment:
+      - OTELDB_STORAGE=ch
+      - CH_DSN=clickhouse://clickhouse:9000
+      - OTEL_LOG_LEVEL=info
+      - OTEL_TRACES_EXPORTER=none
+      - OTEL_METRICS_EXPORTER=none
+      - OTEL_LOGS_EXPORTER=stdout
+      - OTEL_RESOURCE_ATTRIBUTES=service.name=go-faster.oteldb
+  grafana:
+    image: "grafana/grafana:10.0.0"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+      - GF_ALERTING_ENABLED=false
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_LOG_LEVEL=warn
+      - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
+    volumes:
+      - ./build/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml
+      - ./build/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/default.yml
+      - ./build/grafana/dashboards:/etc/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - oteldb
+      - prometheus
+
+  node-exporter:
+    image: prom/node-exporter
+    restart: unless-stopped
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.processes'
+      - '--web.max-requests=40'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
 
 volumes:
   kh:
   metadata:
+  prometheus:
+  vmdata:

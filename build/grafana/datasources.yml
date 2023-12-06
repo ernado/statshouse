@@ -1,0 +1,51 @@
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://prometheus:9090
+    uid: prometheus
+    isDefault: true
+
+  - name: Statshouse
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://api:10888/prom/
+    uid: statshouse
+    jsonData:
+      httpMethod: POST
+
+  - name: "oteldb"
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://oteldb:9090
+    uid: promoteldb
+
+  - name: VictoriaMetrics
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://victoriametrics:8428
+    uid: victoriametrics
+    jsonData:
+      prometheusType: Prometheus
+      prometheusVersion: 2.24.0
+
+  - name: "qryn"
+    type: prometheus
+    access: proxy
+    orgId: 1
+    url: http://qryn:3100
+    uid: qryn
+
+  - name: ClickHouse
+    type: grafana-clickhouse-datasource
+    uid: clickhouse
+    jsonData:
+      port: 9000
+      server: clickhouse
+      tlsSkipVerify: true

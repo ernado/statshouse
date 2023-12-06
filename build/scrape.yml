@@ -3,11 +3,23 @@ global:
 
 scrape_configs:
 - job_name: 'demo'
+  scrape_interval: 5s
   static_configs:
     - targets:
-      - 'demo.promlabs.com:10000'
-      - 'demo.promlabs.com:10001'
-      - 'demo.promlabs.com:10002'
+      - 'demo-1:8080'
+      - 'demo-2:8080'
+      - 'demo-3:8080'
+- job_name: node-exporter
+  scrape_interval: 5s
+  static_configs:
+    - targets: [node-exporter:9100]
+- job_name: prometheus
+  scrape_interval: 5s
+  static_configs:
+    - targets: [prometheus:9090]
 
 remote_write:
 - url: http://agent:13380/write
+- url: http://oteldb:19291
+- url: http://victoriametrics:8428/api/v1/write
+- url: http://qryn:3100/api/v1/prom/remote/write
