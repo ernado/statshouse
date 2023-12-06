@@ -1,6 +1,18 @@
 version: "3.9"
 
 services:
+  demo-1:
+    image: julius/prometheus-demo-service:latest
+    profiles:
+      - scrape
+  demo-2:
+    image: julius/prometheus-demo-service:latest
+    profiles:
+      - scrape
+  demo-3:
+    image: julius/prometheus-demo-service:latest
+    profiles:
+      - scrape
   metadata:
     profiles:
       - sh
@@ -79,6 +91,7 @@ services:
   api:
     profiles:
       - sh
+      - scrape
     build:
       context: .
       dockerfile: build/statshouse-api.Dockerfile
